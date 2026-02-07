@@ -9,6 +9,10 @@
   Deploy your personal AI agent with chat UI, skills system, MCP support, and multi-model routing.
 </p>
 
+<p align="center">
+  <em>Inspired by <a href="https://openclaw.ai/">OpenClaw.ai</a></em>
+</p>
+
 ## Features
 
 - **Public Chat UI** - Clean, real-time chat with streaming responses
