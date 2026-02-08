@@ -21,6 +21,8 @@ convex/_generated/
 .vscode/*
 !.vscode/extensions.json
 .idea/
+.cursor/
+.claude/
 
 # OS files
 .DS_Store
