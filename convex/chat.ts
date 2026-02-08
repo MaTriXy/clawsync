@@ -5,6 +5,8 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { clawsyncAgent } from './agent/clawsync';
 import { rateLimiter } from './rateLimits';
+import { loadTools } from './agent/toolLoader';
+import { stepCountIs } from '@convex-dev/agent';
 
 /**
  * Chat Functions
@@ -56,14 +58,40 @@ export const send = action({
 
     try {
       // Create or continue thread
-      const thread = args.threadId
-        ? await clawsyncAgent.continueThread(ctx, { threadId: args.threadId })
-        : await clawsyncAgent.createThread(ctx, {});
+      let threadId = args.threadId;
+      let thread;
+      if (threadId) {
+        ({ thread } = await clawsyncAgent.continueThread(ctx, { threadId }));
+      } else {
+        const created = await clawsyncAgent.createThread(ctx, {});
+        threadId = created.threadId;
+        thread = created.thread;
+      }
+
+      // Load soul document from config
+      const config = await ctx.runQuery(internal.agentConfig.getConfig);
+      const system = config
+        ? `${config.soulDocument}\n\n${config.systemPrompt}`
+        : undefined;
+
+      // Load tools from skill registry
+      const tools = await loadTools(ctx);
 
       // Generate response
-      const result = await thread.generateText({
-        prompt: args.message,
-      });
+      const hasTools = Object.keys(tools).length > 0;
+      const result = await thread.generateText(
+        {
+          prompt: args.message,
+          ...(system && { system }),
+          ...(hasTools && { tools }),
+          ...(hasTools && { stopWhen: stepCountIs(5) }),
+        },
+        {
+          // Save all messages (including tool call steps) so the
+          // frontend subscription picks them up incrementally.
+          storageOptions: { saveMessages: 'all' },
+        },
+      );
 
       // Log activity
       await ctx.runMutation(internal.activityLog.log, {
@@ -72,9 +100,34 @@ export const send = action({
         visibility: 'private',
       });
 
+      // Extract tool call info from steps
+      const toolCalls: Array<{ name: string; args: string; result: string }> = [];
+      const steps = (result as any).steps;
+      if (Array.isArray(steps)) {
+        for (const step of steps) {
+          if (Array.isArray(step.toolCalls)) {
+            for (const tc of step.toolCalls) {
+              const toolResult = step.toolResults?.find(
+                (tr: any) => tr.toolCallId === tc.toolCallId
+              )?.result;
+              toolCalls.push({
+                name: tc.toolName ?? tc.name ?? 'unknown',
+                args: JSON.stringify(tc.args ?? {}, null, 2),
+                result: toolResult
+                  ? typeof toolResult === 'string'
+                    ? toolResult.slice(0, 1000)
+                    : JSON.stringify(toolResult, null, 2).slice(0, 1000)
+                  : '',
+              });
+            }
+          }
+        }
+      }
+
       return {
         response: result.text,
-        threadId: thread.threadId,
+        threadId,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       };
     } catch (error) {
       console.error('Chat error:', error);
@@ -103,9 +156,15 @@ export const stream = internalAction({
       throw new Error('Rate limit exceeded');
     }
 
-    const thread = args.threadId
-      ? await clawsyncAgent.continueThread(ctx, { threadId: args.threadId })
-      : await clawsyncAgent.createThread(ctx, {});
+    let threadId = args.threadId;
+    let thread;
+    if (threadId) {
+      ({ thread } = await clawsyncAgent.continueThread(ctx, { threadId }));
+    } else {
+      const created = await clawsyncAgent.createThread(ctx, {});
+      threadId = created.threadId;
+      thread = created.thread;
+    }
 
     // Use streaming generation
     const result = await thread.generateText({
@@ -114,7 +173,7 @@ export const stream = internalAction({
 
     return {
       response: result.text,
-      threadId: thread.threadId,
+      threadId,
     };
   },
 });
@@ -126,11 +185,12 @@ export const getHistory = action({
   },
   handler: async (ctx, args) => {
     try {
-      const messages = await clawsyncAgent.listMessages(ctx, {
+      const result = await clawsyncAgent.listMessages(ctx, {
         threadId: args.threadId,
+        paginationOpts: { numItems: 100, cursor: null },
       });
 
-      return { messages };
+      return { messages: result.page };
     } catch {
       return { messages: [] };
     }
@@ -157,9 +217,15 @@ export const apiSend = internalAction({
 
     try {
       // Create or continue thread
-      const thread = args.threadId
-        ? await clawsyncAgent.continueThread(ctx, { threadId: args.threadId })
-        : await clawsyncAgent.createThread(ctx, {});
+      let threadId = args.threadId;
+      let thread;
+      if (threadId) {
+        ({ thread } = await clawsyncAgent.continueThread(ctx, { threadId }));
+      } else {
+        const created = await clawsyncAgent.createThread(ctx, {});
+        threadId = created.threadId;
+        thread = created.thread;
+      }
 
       // Generate response
       const result = await thread.generateText({
@@ -179,7 +245,7 @@ export const apiSend = internalAction({
 
       return {
         response: result.text,
-        threadId: thread.threadId,
+        threadId,
         tokensUsed: (usage.promptTokens ?? 0) + (usage.completionTokens ?? 0),
         inputTokens: usage.promptTokens ?? 0,
         outputTokens: usage.completionTokens ?? 0,

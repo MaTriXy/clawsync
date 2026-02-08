@@ -450,7 +450,7 @@ http.route({
     }
 
     // Get available resources (knowledge bases, etc.)
-    const resources = await ctx.runQuery(internal.mcp.listResources);
+    const resources = await ctx.runAction(internal.mcp.listResources);
 
     return jsonResponse({ resources }, 200, cors);
   }),

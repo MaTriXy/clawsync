@@ -14,37 +14,7 @@
  * See: https://docs.convex.dev/auth/authkit/
  */
 
-// Placeholder until WorkOS is configured
-const WORKOS_ENABLED = false;
-
-// WorkOS client ID from environment (set in Convex Dashboard)
-const clientId = process.env.WORKOS_CLIENT_ID;
-
-/**
- * Auth configuration for WorkOS JWT validation
- *
- * This validates JWTs issued by WorkOS when users authenticate.
- * Two providers are needed to handle both SSO and User Management tokens.
- */
-const authConfig = WORKOS_ENABLED && clientId ? {
-  providers: [
-    // SSO Provider
-    {
-      type: 'customJwt' as const,
-      issuer: 'https://api.workos.com/',
-      algorithm: 'RS256' as const,
-      applicationID: clientId,
-      jwks: `https://api.workos.com/sso/jwks/${clientId}`,
-    },
-    // User Management Provider
-    {
-      type: 'customJwt' as const,
-      issuer: `https://api.workos.com/user_management/${clientId}`,
-      algorithm: 'RS256' as const,
-      jwks: `https://api.workos.com/sso/jwks/${clientId}`,
-    },
-  ],
-} : {
+const authConfig = {
   providers: [],
 };
 

@@ -1,6 +1,6 @@
 'use node';
 
-import { internalAction, internalQuery, ActionCtx } from './_generated/server';
+import { internalAction, ActionCtx } from './_generated/server';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { checkSecurity } from './agent/security';
@@ -197,7 +197,7 @@ async function executeCodeSkill(
 }
 
 // List available MCP resources
-export const listResources = internalQuery({
+export const listResources = internalAction({
   args: {},
   handler: async (ctx) => {
     // Get knowledge bases or other resources
@@ -228,7 +228,7 @@ export const listResources = internalQuery({
 });
 
 // Read an MCP resource by URI
-export const readResource = internalQuery({
+export const readResource = internalAction({
   args: {
     uri: v.string(),
   },

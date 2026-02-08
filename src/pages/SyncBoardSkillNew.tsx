@@ -15,14 +15,18 @@ export function SyncBoardSkillNew() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
+  const [knowledgeText, setKnowledgeText] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
 
-  // Template data lookup for potential future use
-  void templates?.find((t: { templateId: string }) => t.templateId === selectedTemplate);
+  const selectedTemplateData = templates?.find(
+    (t: { templateId: string }) => t.templateId === selectedTemplate
+  );
 
   const handleCreate = async () => {
-    if (!name || !description) {
+    // Use template description as fallback if user left it blank
+    const finalDescription = description || selectedTemplateData?.description || '';
+    if (!name || !finalDescription) {
       setError('Name and description are required');
       return;
     }
@@ -41,13 +45,16 @@ export function SyncBoardSkillNew() {
     setError('');
 
     try {
-      const config = skillType === 'webhook'
-        ? JSON.stringify({ url: webhookUrl, method: 'POST' })
-        : undefined;
+      let config: string | undefined;
+      if (skillType === 'webhook') {
+        config = JSON.stringify({ url: webhookUrl, method: 'POST' });
+      } else if (selectedTemplate === 'knowledge-lookup' && knowledgeText) {
+        config = JSON.stringify({ knowledge: knowledgeText });
+      }
 
       await createSkill({
         name,
-        description,
+        description: finalDescription,
         skillType,
         templateId: skillType === 'template' ? selectedTemplate : undefined,
         config,
@@ -106,8 +113,13 @@ export function SyncBoardSkillNew() {
               onChange={(e) => setDescription(e.target.value)}
               className="input"
               rows={3}
-              placeholder="What does this skill do?"
+              placeholder={selectedTemplateData?.description || 'What does this skill do?'}
             />
+            {selectedTemplateData && !description && (
+              <p className="hint">
+                Leave blank to use the template default, or write a custom description for the agent.
+              </p>
+            )}
           </div>
 
           {skillType === 'template' && (
@@ -121,7 +133,6 @@ export function SyncBoardSkillNew() {
                     onClick={() => {
                       setSelectedTemplate(template.templateId);
                       if (!name) setName(template.name);
-                      if (!description) setDescription(template.description);
                     }}
                   >
                     <span className="template-name">{template.name}</span>
@@ -130,6 +141,23 @@ export function SyncBoardSkillNew() {
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {selectedTemplate === 'knowledge-lookup' && (
+            <div className="form-group">
+              <label htmlFor="knowledge-text">Knowledge Content</label>
+              <textarea
+                id="knowledge-text"
+                value={knowledgeText}
+                onChange={(e) => setKnowledgeText(e.target.value)}
+                className="input"
+                rows={10}
+                placeholder="Paste your knowledge base content, guidelines, or reference material here..."
+              />
+              <p className="hint">
+                The agent will search this text when the skill is invoked.
+              </p>
             </div>
           )}
 

@@ -28,6 +28,8 @@ export const execute = internalAction({
         return executeRssFetcher(parsedConfig);
       case 'web-scraper':
         return executeWebScraper(parsedConfig, input);
+      case 'knowledge-lookup':
+        return executeKnowledgeLookup(parsedConfig, input);
       default:
         throw new Error(`Unknown template: ${templateId}`);
     }
@@ -158,4 +160,31 @@ async function executeWebScraper(
   const html = await response.text();
   // In production, use a proper HTML parser and selector
   return html.length > 10000 ? html.slice(0, 10000) + '...[truncated]' : html;
+}
+
+function executeKnowledgeLookup(
+  config: { knowledge?: string },
+  input: string
+): string {
+  const knowledge = config.knowledge || '';
+  if (!knowledge) {
+    return 'No knowledge content configured for this skill.';
+  }
+
+  // Simple keyword search: if the input query matches lines in the knowledge, return those.
+  // Otherwise return the full knowledge text.
+  const query = input.toLowerCase();
+  const lines = knowledge.split('\n');
+  const matches = lines.filter(
+    (line) => line.toLowerCase().includes(query)
+  );
+
+  if (matches.length > 0 && matches.length < lines.length) {
+    return matches.join('\n');
+  }
+
+  // Return full knowledge (truncated if very long)
+  return knowledge.length > 10000
+    ? knowledge.slice(0, 10000) + '...[truncated]'
+    : knowledge;
 }
