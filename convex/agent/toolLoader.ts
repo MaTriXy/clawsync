@@ -1,8 +1,8 @@
 import { ActionCtx } from '../_generated/server';
-import { internal } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import { Doc } from '../_generated/dataModel';
-import { tool as createTool } from 'ai';
-import { z } from 'zod';
+import { createTool } from '@convex-dev/agent';
+import { jsonSchema } from 'ai';
 import { checkSecurity, truncateForLog } from './security';
 
 /**
@@ -15,7 +15,7 @@ import { checkSecurity, truncateForLog } from './security';
  * All tools pass through the security checker before execution.
  */
 
-export type ToolSet = Record<string, ReturnType<typeof createTool>>;
+export type ToolSet = Record<string, any>;
 
 /**
  * Load all tools for the agent
@@ -29,19 +29,102 @@ export async function loadTools(ctx: ActionCtx): Promise<ToolSet> {
   for (const skill of skills) {
     const toolFn = createToolFromSkill(ctx, skill);
     if (toolFn) {
-      tools[skill.name] = toolFn;
+      // Sanitize name to match Anthropic's pattern: ^[a-zA-Z0-9_-]{1,128}
+      const safeName = skill.name
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .replace(/_+/g, '_')
+        .slice(0, 128);
+      tools[safeName] = toolFn;
     }
   }
 
-  // TODO: Load tools from MCP servers
-  // const mcpServers = await ctx.runQuery(internal.mcpServers.getEnabledApproved);
-  // for (const server of mcpServers) {
-  //   const mcpTools = await loadMcpTools(ctx, server);
-  //   Object.assign(tools, mcpTools);
-  // }
+  // Load tools from enabled MCP servers
+  try {
+    const mcpServers = await ctx.runQuery(api.mcpServers.getEnabledApproved);
+
+    for (const server of mcpServers) {
+      if (!server.url) continue;
+
+      try {
+        // Fetch tool list from MCP server (SSE transport requires Accept header)
+        const response = await fetch(server.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json, text/event-stream',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', method: 'tools/list', params: {}, id: 1 }),
+        });
+
+        if (!response.ok) continue;
+
+        const data = await response.json();
+        const mcpTools = data.result?.tools || data.tools || [];
+
+        for (const mcpTool of mcpTools) {
+          const safeName = (mcpTool.name as string)
+            .replace(/[^a-zA-Z0-9_-]/g, '_')
+            .replace(/_+/g, '_')
+            .slice(0, 128);
+
+          tools[safeName] = createMcpTool(server.url, mcpTool);
+        }
+      } catch (e) {
+        console.error(`Failed to load tools from MCP server ${server.name}:`, e);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load MCP servers:', e);
+  }
 
   return tools;
 }
+
+/**
+ * Create a tool that proxies to an MCP server
+ */
+function createMcpTool(serverUrl: string, mcpTool: any) {
+  const schema = mcpTool.inputSchema || { type: 'object', properties: {} };
+
+  return createTool({
+    description: mcpTool.description || mcpTool.name,
+    args: jsonSchema(schema),
+    handler: async (_toolCtx: any, args: any) => {
+      try {
+        const response = await fetch(serverUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json, text/event-stream',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: { name: mcpTool.name, arguments: args },
+            id: 1,
+          }),
+        });
+
+        if (!response.ok) {
+          return { error: `MCP tool call failed: ${response.status}` };
+        }
+
+        const data = await response.json();
+        return data.result || data;
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : 'MCP tool call failed' };
+      }
+    },
+  });
+}
+
+const inputSchema = jsonSchema({
+  type: 'object' as const,
+  properties: {
+    input: { type: 'string', description: 'Input for the skill' },
+  },
+  required: ['input'],
+});
 
 /**
  * Create an AI SDK tool from a skill registry entry
@@ -49,15 +132,13 @@ export async function loadTools(ctx: ActionCtx): Promise<ToolSet> {
 function createToolFromSkill(
   ctx: ActionCtx,
   skill: Doc<'skillRegistry'>
-): ReturnType<typeof createTool> | null {
+): any | null {
   switch (skill.skillType) {
     case 'template':
       return createTemplateSkillTool(ctx, skill);
     case 'webhook':
       return createWebhookSkillTool(ctx, skill);
     case 'code':
-      // Code-defined skills are imported directly
-      // This is a placeholder - actual implementation imports from skill files
       return createCodeSkillTool(ctx, skill);
     default:
       return null;
@@ -67,19 +148,13 @@ function createToolFromSkill(
 /**
  * Create a tool from a template skill
  */
-function createTemplateSkillTool(
-  ctx: ActionCtx,
-  skill: Doc<'skillRegistry'>
-): ReturnType<typeof createTool> {
+function createTemplateSkillTool(ctx: ActionCtx, skill: Doc<'skillRegistry'>) {
   return createTool({
     description: skill.description,
-    parameters: z.object({
-      input: z.string().describe('Input for the skill'),
-    }),
-    execute: async ({ input }) => {
+    args: inputSchema,
+    handler: async (_toolCtx, { input }: { input: string }) => {
       const startTime = Date.now();
 
-      // Security check
       const securityResult = await checkSecurity(ctx, skill, input);
       if (!securityResult.allowed) {
         await logInvocation(ctx, skill, input, null, false, securityResult, startTime);
@@ -87,9 +162,8 @@ function createTemplateSkillTool(
       }
 
       try {
-        // Execute template skill via internal action
         const result = await ctx.runAction(
-          internal.agent.skills.templates.execute,
+          internal.agent.skills.templates.execute.execute,
           {
             templateId: skill.templateId!,
             config: skill.config || '{}',
@@ -111,23 +185,16 @@ function createTemplateSkillTool(
 /**
  * Create a tool from a webhook skill
  */
-function createWebhookSkillTool(
-  ctx: ActionCtx,
-  skill: Doc<'skillRegistry'>
-): ReturnType<typeof createTool> {
+function createWebhookSkillTool(ctx: ActionCtx, skill: Doc<'skillRegistry'>) {
   return createTool({
     description: skill.description,
-    parameters: z.object({
-      input: z.string().describe('Input for the webhook'),
-    }),
-    execute: async ({ input }) => {
+    args: inputSchema,
+    handler: async (_toolCtx, { input }: { input: string }) => {
       const startTime = Date.now();
 
-      // Parse config for URL
       const config = skill.config ? JSON.parse(skill.config) : {};
       const domain = config.url ? new URL(config.url).hostname : undefined;
 
-      // Security check with domain
       const securityResult = await checkSecurity(ctx, skill, input, { domain });
       if (!securityResult.allowed) {
         await logInvocation(ctx, skill, input, null, false, securityResult, startTime);
@@ -135,9 +202,8 @@ function createWebhookSkillTool(
       }
 
       try {
-        // Execute webhook via internal action
         const result = await ctx.runAction(
-          internal.agent.skills.templates.webhookCaller,
+          internal.agent.skills.templates.execute.webhookCaller,
           {
             config: skill.config || '{}',
             input,
@@ -158,21 +224,20 @@ function createWebhookSkillTool(
 
 /**
  * Create a tool from a code-defined skill
- * Placeholder - actual implementation imports from skill files
  */
-function createCodeSkillTool(
-  ctx: ActionCtx,
-  skill: Doc<'skillRegistry'>
-): ReturnType<typeof createTool> {
+function createCodeSkillTool(ctx: ActionCtx, skill: Doc<'skillRegistry'>) {
   return createTool({
     description: skill.description,
-    parameters: z.object({
-      query: z.string().describe('Query input'),
+    args: jsonSchema({
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Query input' },
+      },
+      required: ['query'],
     }),
-    execute: async ({ query }) => {
+    handler: async (_toolCtx, { query }: { query: string }) => {
       const startTime = Date.now();
 
-      // Security check
       const securityResult = await checkSecurity(ctx, skill, query);
       if (!securityResult.allowed) {
         await logInvocation(ctx, skill, query, null, false, securityResult, startTime);
@@ -180,10 +245,7 @@ function createCodeSkillTool(
       }
 
       try {
-        // Code skills would be routed to their specific handlers here
-        // For now, return a placeholder
         const result = `Code skill "${skill.name}" executed with query: ${query}`;
-
         await logInvocation(ctx, skill, query, result, true, securityResult, startTime);
         return { result };
       } catch (error) {

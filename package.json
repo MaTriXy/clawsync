@@ -14,9 +14,9 @@
     "deploy:static": "npx @convex-dev/self-static-hosting upload --build --prod"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^1.2.12",
-    "@ai-sdk/openai": "^1.3.22",
-    "@ai-sdk/openai-compatible": "^0.2.14",
+    "@ai-sdk/anthropic": "^2.0.59",
+    "@ai-sdk/openai": "^2.0.89",
+    "@ai-sdk/openai-compatible": "^1.0.32",
     "@convex-dev/agent": "^0.3.2",
     "@convex-dev/rate-limiter": "^0.3.2",
     "@convex-dev/self-static-hosting": "github:get-convex/self-static-hosting",
