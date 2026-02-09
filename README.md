@@ -5,28 +5,13 @@
 <h1 align="center">ClawSync</h1>
 
 <p align="center">
-  Open source AI agent platform built with React + Convex.<br>
-  Deploy your personal AI agent with chat UI, skills system, MCP support, and multi-model routing.
+OpenClaw for the cloud.
+Deploy an open source personal AI agent with chat UI, skills system, MCP support, and multi-model routing. Built on Convex.
 </p>
 
 <p align="center">
   <em>Inspired by <a href="https://openclaw.ai/">OpenClaw.ai</a></em>
 </p>
-
-## ClawSync Challenge
-
-**Win $500 + Swag + API Credits**
-
-Be one of the first three to deploy ClawSync and show it off. Post a live demo on X demonstrating at least three agent features.
-
-**Prizes:** $500 cash/gift card, swag, API credits
-
-**Requirements:**
-- Post a live demo video on X showing your deployed ClawSync agent
-- Demonstrate at least 3 different agent features (chat, skills, MCP, channels, X integration, etc.)
-- SyncBoard admin dashboard and Live Activity Feed do not count as features
-- Tag **@convex** and use **#ClawSyncChallenge**
-- First 3 valid submissions win
 
 ## Features
 
@@ -76,6 +61,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 Optional for multi-model support:
+
 ```
 OPENAI_API_KEY=sk-...
 XAI_API_KEY=xai-...
@@ -114,10 +100,10 @@ Your app will be available at `https://your-project.convex.site`.
 
 ### Deployment Options
 
-| Mode | Description | Best For |
-|------|-------------|----------|
-| Convex Storage | Files in Convex, served via HTTP | Simple apps, development |
-| Convex + Cloudflare CDN | Files in Convex, cached at edge | Custom domains, production |
+| Mode                    | Description                      | Best For                   |
+| ----------------------- | -------------------------------- | -------------------------- |
+| Convex Storage          | Files in Convex, served via HTTP | Simple apps, development   |
+| Convex + Cloudflare CDN | Files in Convex, cached at edge  | Custom domains, production |
 
 See [@convex-dev/self-static-hosting](https://github.com/get-convex/self-static-hosting) for advanced options.
 
@@ -128,6 +114,7 @@ See [@convex-dev/self-static-hosting](https://github.com/get-convex/self-static-
 Protect your admin dashboard with a password:
 
 1. Generate a password hash:
+
 ```bash
 node -e "console.log(require('crypto').createHash('sha256').update('your-password').digest('hex'))"
 ```
@@ -190,9 +177,9 @@ ClawSync supports xAI's Grok models alongside Claude, GPT, and others.
 
 ### Available Models
 
-| Model | Description |
-|-------|-------------|
-| grok-3 | xAI flagship model |
+| Model       | Description                        |
+| ----------- | ---------------------------------- |
+| grok-3      | xAI flagship model                 |
 | grok-3-fast | Fast variant for quicker responses |
 
 ## Project Structure
@@ -234,14 +221,14 @@ clawsync/
 
 ClawSync uses a custom design system with Geist fonts from Vercel.
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--bg-primary` | #f3f3f3 | Page backgrounds |
-| `--bg-secondary` | #ececec | Cards, inputs |
-| `--interactive` | #ea5b26 | Buttons, links |
-| `--text-primary` | #232323 | Body text |
-| `--font-sans` | Geist | UI text |
-| `--font-mono` | Geist Mono | Code |
+| Token            | Value      | Usage            |
+| ---------------- | ---------- | ---------------- |
+| `--bg-primary`   | #f3f3f3    | Page backgrounds |
+| `--bg-secondary` | #ececec    | Cards, inputs    |
+| `--interactive`  | #ea5b26    | Buttons, links   |
+| `--text-primary` | #232323    | Body text        |
+| `--font-sans`    | Geist      | UI text          |
+| `--font-mono`    | Geist Mono | Code             |
 
 All tokens are in `src/styles/tokens.css`. Never hardcode colors.
 
@@ -260,12 +247,14 @@ npm run typecheck    # TypeScript check
 ## Adding Skills
 
 ### Template Skill
+
 1. SyncBoard > Skills > Add Skill
 2. Select "Template Skill"
 3. Choose a template and configure
 4. Approve the skill
 
 ### Webhook Skill
+
 1. SyncBoard > Skills > Add Skill
 2. Select "Webhook Skill"
 3. Enter the API endpoint URL
@@ -273,6 +262,7 @@ npm run typecheck    # TypeScript check
 5. Approve the skill
 
 ### Code Skill
+
 Add a file in `convex/agent/skills/` and register it in the skill registry.
 
 ## Security
